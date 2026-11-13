@@ -33,6 +33,10 @@ Reduce the barrier distance for a narrower band. Increase softness for a gentler
 
 Uses private Obsidian graph internals, so Obsidian updates may require a plugin update. Patches an in-memory copy of the local graph worker; no application files are modified.
 
+## Privacy
+
+The plugin reads Obsidian’s bundled `sim.js` outside your vault through the local `app://` protocol to add the barrier forces. The scanner counts this `fetch` call as a network request, but it contacts no remote service and sends no notes or other data over the internet. No telemetry is collected.
+
 ## Build
 
 ```sh
