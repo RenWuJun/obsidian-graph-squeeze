@@ -1,0 +1,19 @@
+{
+  "name": "obsidian-graph-squeeze",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Directional force areas for Obsidian\u2019s native graph view.",
+  "scripts": {
+    "dev": "node esbuild.config.mjs --watch",
+    "build": "tsc --noEmit && node esbuild.config.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.8.7",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  }
+}
