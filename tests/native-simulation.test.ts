@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { GraphBridge, type GraphRenderer } from "../src/graph-bridge";
 import { instrumentWorker } from "../src/worker-source";
 import { DEFAULT_SETTINGS } from "../src/settings";
+import { timerWindow } from "./timer-window";
 
 // Use the user's installed sim.js; do not redistribute Obsidian's source.
 const sourcePath = process.env.OBSIDIAN_SIM_PATH;
@@ -211,6 +212,7 @@ for (const wasm of [true, false]) for (const shared of [true, false]) {
         const forces = { ...defaultForces, repelStrength };
         original.postMessage({ nodes, links, forces, alpha: 0.3, run: true });
         const renderer: GraphRenderer = {
+          containerEl: timerWindow().containerEl,
           worker: original as unknown as Worker,
           nodes: Object.entries(nodes).map(([id, [x, y]]) => ({ id, x, y })),
           links: links.map(([source, target]) => ({ source: { id: source }, target: { id: target } })),

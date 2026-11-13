@@ -33,7 +33,8 @@ export default class GraphSqueezePlugin extends Plugin {
       new Notice("Barrier distance reset.");
     } });
     try {
-      // Read only the native worker bundled with the running Obsidian app.
+      // Read the bundled worker through Obsidian's local app:// protocol.
+      // requestUrl handles HTTP(S); this is an app resource, not a network request.
       const response = await fetch(new URL("/sim.js", window.location.href));
       if (!response.ok) throw new Error(`Cannot read the native graph worker (${response.status}).`);
       const source = instrumentWorker(await response.text());
@@ -146,28 +147,48 @@ export default class GraphSqueezePlugin extends Plugin {
 class SqueezeSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: GraphSqueezePlugin) { super(app, plugin); }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.createEl("p", { text: "Two invisible force areas squeeze your graph: the area above pushes downward, and the area below pushes upward. Only the distance below sets their boundaries." });
-    this.numberSetting("barrierDistance", "Barrier distance",
-      "Total gap between the top and bottom boundaries, in graph units. Range: 0–80,000; default: 80,000.", DISTANCE_LIMITS);
-    this.numberSetting("edgeSoftness", "Edge softness",
-      "Full distance from zero to maximum force, in graph units. The push is half strength halfway through and full strength at the boundary. Range: 0–40,000; default: 10,000. Limited to half the gap so the approach zones do not overlap.", EDGE_SOFTNESS_LIMITS);
-    containerEl.createEl("p", { cls: "setting-item-description", text: "Softness does not move the boundaries. The push ramps smoothly across the entire softness distance and stays at maximum beyond the boundary. Zero softness (or zero gap) gives a sharp transition. Applies to global and local graphs." });
-    this.numberSetting("maxForce", "Maximum barrier force",
-      "Limit the barrier push. Lower values feel gentler; higher values squeeze harder. Range: 0–1,000; default: 10. Zero disables the barrier force. Changes strength without changing the transition distance. The push weakens as the graph settles.", MAX_FORCE_LIMITS);
-    new Setting(containerEl).setName("Barrier force visualizer")
-      .setDesc("Show a violet tint over the barrier force areas. Weaker force is more transparent; stronger force has more color. Follows pan and zoom. Off by default.")
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.showForceVisualizer)
-        .onChange(value => this.plugin.updateSettings({ showForceVisualizer: value })));
+  getSettingDefinitions() {
+    return [
+      {
+        name: "Barrier distance",
+        desc: "Total gap between the top and bottom boundaries, in graph units. Range: 0–80,000; default: 80,000.",
+        render: (setting: Setting) => this.numberSetting(setting, "barrierDistance", DISTANCE_LIMITS),
+      },
+      {
+        name: "Edge softness",
+        desc: "Full distance from zero to maximum force, in graph units. The push is half strength halfway through and full strength at the boundary. Range: 0–40,000; default: 10,000. Limited to half the gap so the approach zones do not overlap. Zero gives a sharp transition.",
+        render: (setting: Setting) => this.numberSetting(setting, "edgeSoftness", EDGE_SOFTNESS_LIMITS),
+      },
+      {
+        name: "Maximum barrier force",
+        desc: "Limit the barrier push. Lower values feel gentler; higher values squeeze harder. Range: 0–1,000; default: 10. Zero disables the barrier force. Changes strength without changing the transition distance. The push weakens as the graph settles.",
+        render: (setting: Setting) => this.numberSetting(setting, "maxForce", MAX_FORCE_LIMITS),
+      },
+      {
+        name: "Barrier force visualizer",
+        desc: "Show a violet tint over the barrier force areas. Weaker force is more transparent; stronger force has more color. Follows pan and zoom. Off by default.",
+        render: (setting: Setting) => {
+          setting.addToggle(toggle => toggle.setValue(this.plugin.settings.showForceVisualizer)
+            .onChange(value => this.plugin.updateSettings({ showForceVisualizer: value })));
+        },
+      },
+    ];
   }
 
-  private numberSetting(key: "barrierDistance" | "edgeSoftness" | "maxForce", name: string, description: string, limits: { min: number; max: number }): void {
-    const setting = new Setting(this.containerEl).setName(name).setDesc(description);
+  // Obsidian before 1.13 uses display(); newer versions render and index the definitions above.
+  display(): void {
+    this.containerEl.empty();
+    for (const definition of this.getSettingDefinitions()) {
+      const setting = new Setting(this.containerEl).setName(definition.name).setDesc(definition.desc);
+      definition.render(setting);
+    }
+  }
+
+  private numberSetting(setting: Setting, key: "barrierDistance" | "edgeSoftness" | "maxForce", limits: { min: number; max: number }): void {
     let field: HTMLInputElement;
     setting.addSlider(slider => {
-      slider.setLimits(limits.min, limits.max, 1).setDynamicTooltip().setValue(this.plugin.settings[key])
+      // The adjacent number field shows the value on every supported version.
+      slider.setLimits(limits.min, limits.max, 1).setValue(this.plugin.settings[key])
         .onChange(async value => {
           if (field) field.value = String(value);
           await this.plugin.updateSettings({ [key]: value });
@@ -178,7 +199,7 @@ class SqueezeSettingTab extends PluginSettingTab {
         field.min = String(limits.min);
         field.max = String(limits.max);
         field.step = "1";
-        field.setAttribute("aria-label", name);
+        field.setAttribute("aria-label", setting.nameEl.textContent ?? key);
         text.setValue(String(this.plugin.settings[key]));
         // Commit on change (blur/Enter), allowing intermediate empty values.
         field.addEventListener("change", () => {

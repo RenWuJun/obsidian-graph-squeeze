@@ -8,9 +8,9 @@ Give your Obsidian graph more room to spread sideways. Two invisible horizontal 
 
 Desktop only.
 
-### Community plugins (not yet listed)
+### Community plugins
 
-Once listed, open **Settings → Community plugins → Browse**, search for **Graph Squeeze**, then install and enable it. Until then, use manual installation below.
+Open the [Community Directory listing](https://community.obsidian.md/plugins/graph-squeeze) and select **Add to Obsidian**. If it is not available in your app yet, use manual installation below.
 
 ### Manual installation
 
@@ -37,6 +37,7 @@ Uses private Obsidian graph internals, so Obsidian updates may require a plugin 
 
 ```sh
 npm ci
+npm run lint
 npm run package
 ```
 

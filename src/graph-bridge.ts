@@ -70,12 +70,13 @@ export class GraphBridge {
   private active = true;
   private readonly worker: Worker;
   private readonly simulation: Worker;
-  private readonly originalPost: Worker["postMessage"];
+  private readonly originalPost: (message: unknown, options?: Transferable[] | StructuredSerializeOptions) => void;
   private readonly originalMessage: Worker["onmessage"];
-  private readonly originalTerminate: Worker["terminate"];
+  private readonly originalTerminate: () => void;
   private readonly ownPost?: PropertyDescriptor;
   private readonly ownTerminate?: PropertyDescriptor;
-  private readyTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly timerWindow: Window;
+  private readyTimer: number | undefined;
   private positions = new Map<string, [number, number] | null>();
   private alphaTarget: number;
 
@@ -86,9 +87,14 @@ export class GraphBridge {
     options: BridgeOptions,
   ) {
     this.worker = renderer.worker;
-    this.originalPost = this.worker.postMessage;
+    const originalPost = this.worker.postMessage.bind(this.worker);
+    this.originalPost = (message, options) => {
+      if (Array.isArray(options)) originalPost(message, options);
+      else originalPost(message, options);
+    };
     this.originalMessage = this.worker.onmessage;
-    this.originalTerminate = this.worker.terminate;
+    this.originalTerminate = this.worker.terminate.bind(this.worker);
+    this.timerWindow = renderer.containerEl?.ownerDocument.defaultView ?? window;
     this.ownPost = Object.getOwnPropertyDescriptor(this.worker, "postMessage");
     this.ownTerminate = Object.getOwnPropertyDescriptor(this.worker, "terminate");
     this.alphaTarget = renderer.dragNode ? 0.3 : 0;
@@ -106,7 +112,7 @@ export class GraphBridge {
       this.worker.postMessage = this.post;
       this.worker.onmessage = this.ignoreOriginal;
       this.worker.terminate = this.terminate;
-      this.readyTimer = setTimeout(() => this.fail(new Error("Directional-force worker did not start.")), 5000);
+      this.readyTimer = this.timerWindow.setTimeout(() => this.fail(new Error("Directional-force worker did not start.")), 5000);
       this.sendOriginal({ alphaTarget: 0 });
       this.simulation.postMessage({ __graphSqueeze: {
         gap: settings().barrierDistance, edgeSoftness: settings().edgeSoftness, maxForce: settings().maxForce,
@@ -125,12 +131,12 @@ export class GraphBridge {
   }
 
   private sendOriginal(message: unknown): void {
-    this.originalPost.call(this.worker, message);
+    this.originalPost(message);
   }
 
-  private post: Worker["postMessage"] = (message: unknown, options?: unknown): void => {
+  private post = (message: unknown, options?: Transferable[] | StructuredSerializeOptions): void => {
     if (!this.active) {
-      Reflect.apply(this.originalPost, this.worker, options === undefined ? [message] : [message, options]);
+      this.originalPost(message, options);
       return;
     }
     try {
@@ -149,8 +155,8 @@ export class GraphBridge {
         const { run: _run, alpha: _alpha, alphaTarget: _target, ...mirror } = data;
         this.sendOriginal(mirror);
       }
-      Reflect.apply(this.simulation.postMessage, this.simulation,
-        options === undefined ? [message] : [message, options]);
+      if (Array.isArray(options)) this.simulation.postMessage(message, options);
+      else this.simulation.postMessage(message, options);
     } catch (error) {
       this.fail(error);
     }
@@ -160,19 +166,20 @@ export class GraphBridge {
     if (!this.active) this.originalMessage?.call(this.worker, event);
   };
 
-  private receive = (event: MessageEvent): void => {
+  private receive = (event: MessageEvent<unknown>): void => {
     if (!this.active) return;
-    if (event.data?.__graphSqueezeReady) {
-      clearTimeout(this.readyTimer);
+    const message = event.data;
+    if (message && typeof message === "object" && "__graphSqueezeReady" in message && message.__graphSqueezeReady === true) {
+      this.timerWindow.clearTimeout(this.readyTimer);
       this.readyTimer = undefined;
       return;
     }
-    if (event.data?.ignore) return;
-    if (!isPositions(event.data)) {
+    if (message && typeof message === "object" && "ignore" in message && message.ignore === true) return;
+    if (!isPositions(message)) {
       this.fail(new Error("Unsupported graph position protocol."));
       return;
     }
-    const data = event.data;
+    const data = message;
     if (data.id.length !== this.positions.size || !data.id.every(id => this.positions.has(id))) return;
     try {
       const points = new Float32Array(data.buffer, 0, data.id.length * 2);
@@ -209,13 +216,13 @@ export class GraphBridge {
 
   private terminate = (): void => {
     this.detach(false);
-    this.originalTerminate.call(this.worker);
+    this.originalTerminate();
   };
 
   detach(reheat = true): void {
     if (!this.active) return;
     this.active = false;
-    clearTimeout(this.readyTimer);
+    this.timerWindow.clearTimeout(this.readyTimer);
     this.readyTimer = undefined;
     this.simulation.onmessage = null;
     this.simulation.onerror = null;

@@ -4,6 +4,7 @@ import { GraphBridge, getGraphForces, type GraphRenderer } from "../src/graph-br
 import { adjustDistance, DEFAULT_SETTINGS, getBounds, normalizeSettings } from "../src/settings";
 import { applyAreaForce, barrierForceAt } from "../src/area-force";
 import { instrumentWorker } from "../src/worker-source";
+import { timerWindow } from "./timer-window";
 
 class FakeWorker {
   messages: any[] = [];
@@ -16,10 +17,12 @@ class FakeWorker {
   terminate(): void { this.terminated = true; }
   emit(data: unknown): void { this.onmessage?.(new MessageEvent("message", { data })); }
 }
-function setup(t: { after(fn: () => void): void }) {
+function setup(t: { after(fn: () => void): void }, ready = true) {
   const original = new FakeWorker();
   const simulation = new FakeWorker();
+  const clock = timerWindow();
   const renderer: GraphRenderer = {
+    containerEl: clock.containerEl,
     worker: original as unknown as Worker,
     nodes: [{ id: "a", x: 11, y: -500 }, { id: "b", x: -17, y: 600 }],
     links: [{ source: { id: "a" }, target: { id: "b" } }],
@@ -30,10 +33,36 @@ function setup(t: { after(fn: () => void): void }) {
   const forces = { centerStrength: 0.2, repelStrength: 800, linkStrength: 0.5, linkDistance: 150 };
   const bridge = new GraphBridge(renderer, () => settings, error => errors.push(error),
     { createWorker: () => simulation as unknown as Worker, forces });
-  simulation.emit({ __graphSqueezeReady: true });
+  if (ready) simulation.emit({ __graphSqueezeReady: true });
   t.after(() => bridge.detach(false));
-  return { original, simulation, renderer, errors, settings, forces, bridge };
+  return { original, simulation, renderer, errors, settings, forces, bridge, clock };
 }
+
+test("worker startup timeout belongs to the graph window and is cleared on ready or detach", t => {
+  const pending = setup(t, false);
+  assert.equal(pending.clock.pending.size, 1);
+  pending.simulation.emit({ __graphSqueezeReady: true });
+  assert.equal(pending.clock.pending.size, 0);
+  const closed = setup(t, false);
+  closed.bridge.detach();
+  assert.equal(closed.clock.pending.size, 0);
+  const failed = setup(t, false);
+  for (const callback of failed.clock.pending.values()) callback();
+  assert.equal(failed.clock.pending.size, 0);
+  assert.equal(failed.errors.length, 1);
+  assert.equal(failed.simulation.terminated, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(failed.original, "postMessage"), false);
+});
+
+test("malformed worker messages restore the ordinary graph without throwing", t => {
+  for (const message of [null, 42, "bad", { __graphSqueezeReady: "yes" }, { ignore: "yes" }]) {
+    const { simulation, errors, original } = setup(t);
+    assert.doesNotThrow(() => simulation.emit(message));
+    assert.equal(errors.length, 1);
+    assert.equal(simulation.terminated, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(original, "postMessage"), false);
+  }
+});
 
 test("areas change only vertical velocity and always push inward beyond their boundaries", () => {
   const nodes = [

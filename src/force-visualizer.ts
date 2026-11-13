@@ -63,14 +63,12 @@ export class ForceVisualizer {
     const doc = container.ownerDocument;
     if (!doc.defaultView) throw new Error("Graph has no window for visualization.");
     this.win = doc.defaultView;
-    this.element = doc.createElement("div");
-    this.element.className = "graph-squeeze-force-visualizer";
+    this.element = container.createDiv({ cls: "graph-squeeze-force-visualizer" });
     this.element.setAttribute("aria-hidden", "true");
     Object.assign(this.element.style, {
       position: "absolute", inset: "0", pointerEvents: "none", zIndex: "0",
       userSelect: "none", borderRadius: "inherit",
     });
-    container.appendChild(this.element);
     this.draw();
   }
 

@@ -27,7 +27,7 @@ export function instrumentWorker(source: string): string {
   if (!tick[0].endsWith(`${oldStep}}}`)) throw new Error("Unsupported native step order.");
   const replacement = tick[0].replace(oldStep,
     `,(self.__graphSqueezeApply(${nodes},${tick[3]})&&(${dirtyFlag}=!0)),${tick[9]}(),${tick[10]}()`);
-  let patched = source.slice(0, tick.index) + replacement + source.slice(tick.index! + tick[0].length);
+  let patched = source.slice(0, tick.index) + replacement + source.slice(tick.index + tick[0].length);
   // The JS fallback caches force strengths. In the inspected native workers the
   // message handler updates their values without invalidating this cache.
   // Refresh it on real force messages, including initial saved slider settings.

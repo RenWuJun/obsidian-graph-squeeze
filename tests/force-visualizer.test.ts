@@ -70,8 +70,8 @@ test("overlay uses its graph window, follows viewport changes and removes itself
     ownerDocument: { defaultView: {
       requestAnimationFrame(fn: FrameRequestCallback) { callbacks.set(++next, fn); return next; },
       cancelAnimationFrame(id: number) { callbacks.delete(id); },
-    }, createElement(tag: string) { assert.equal(tag, "div"); return element; } },
-    appendChild(child: unknown) { assert.equal(child, element); },
+    } },
+    createDiv(options: { cls: string }) { element.className = options.cls; return element; },
   } as unknown as HTMLElement;
   const settings = { ...DEFAULT_SETTINGS, barrierDistance: 2000, edgeSoftness: 250, showForceVisualizer: true };
   const renderer = { containerEl: container, viewport: { top: -2000, bottom: 2000 } } as GraphRenderer;
